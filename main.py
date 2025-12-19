@@ -2,7 +2,7 @@
 # mamba install pysam
 # pip install pybedtools
 
-import os, sys, random, pybedtools, statistics
+import os, sys, random, pybedtools, statistics, argparse
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -17,16 +17,14 @@ result_file_columns = ['annotation', 'observed', 'fc', 'pval',
                        'hit_overlap', 'hit_fc', 'hit_pval',
                        'nonhit_overlap', 'nonhit_fc', 'nonhit_pval', 
                        'hit_overlap_per_exon', 'nonhit_overlap_per_exon', 'pval_per_exon']
+CONFIG = {}
 
-CONFIG = {'LENGTH_TOLERENCE': [0.02, 0.05, 0.1], 'REGION_LENGTH_THRSHOLD': 2000, 'SIMULATION_COUNT': 10000}
-# CONFIG = {'LENGTH_TOLERENCE': [0.02], 'REGION_LENGTH_THRSHOLD': 2000, 'SIMULATION_COUNT': 10000}
-# CONFIG = {'LENGTH_TOLERENCE': [0.1]}
-# [0.02, 0.05, 0.1]
+def update_config(args):
+    CONFIG['REGION_FILE'] = args.region
+    CONFIG['ANNOTATION_FILE'] = args.annotation
+    CONFIG['OUT_DIR'] = args.outdir
 
-def update_config(region_file, annotation_file, out_dir):
-    CONFIG['REGION_FILE'] = region_file
-    CONFIG['ANNOTATION_FILE'] = annotation_file
-    CONFIG['OUT_DIR'] = out_dir
+    out_dir = args.outdir
     
     work_dir = os.path.join(out_dir, 'tmp')
     os.makedirs(work_dir, exist_ok = True)
@@ -36,11 +34,15 @@ def update_config(region_file, annotation_file, out_dir):
     os.makedirs(plot_dir, exist_ok = True)
     CONFIG['PLOT_DIR'] = plot_dir
 
-    annotation_file_base_name = os.path.basename(annotation_file)
+    annotation_file_base_name = os.path.basename(args.annotation)
     annotation_file_name = os.path.splitext(annotation_file_base_name)[0]
     out_dir = os.path.join(out_dir, annotation_file_name)
     os.makedirs(out_dir, exist_ok = True)
     CONFIG['ANNOTATION_DIR'] = out_dir
+
+    CONFIG['LENGTH_TOLERENCE'] = args.length_tolerence
+    CONFIG['SIMULATION_COUNT'] = args.simulation_count
+    CONFIG['REGION_LENGTH_THRSHOLD'] = args.region_length_threshold
 
 def intersect_region_annotation():
     region_file = CONFIG['REGION_FILE']
@@ -470,49 +472,80 @@ def calculate_significance(simulationFile):
     # tmpDf = tmpDf.sort_values(by=['fc'], ascending=False)
     # tmpDf.to_csv(savePath, sep='\t', index=None)
     
-    print('Results saved to %s'%(savePath))
+    print('Results saved to %s'%(savePath)) 
 
-# region_file should have the required cols
-# annotation_file should be sorted and merged    
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="REGEN (REgion-based Genomic ENrichment): tool for evaluating enrichment of annotations within genomic regions",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
-# /home/people/22211214/scratch/projectbl/bldata/regions.hg38.noCT.noPCG.hela.highconf.bed
-# /home/people/22211214/scratch/ref/ANNOTATION_hg38_gencodeV46_mitranscriptomeBl.gtf
-# /home/people/22211214/scratch/enrichment_analysis/ELBE.merged.uns/RIDLS___ridls.bed
+    # Required argument
+    parser.add_argument(
+        "--region",
+        required=True,
+        help="Path to region file, should be in bed6 format with 4th column as region_id and 5th column as is_hit",
+    )
 
-# python main.py ~/scratch/projectbl/bldata/hela/hela_merged_exons_overlap_20.bed /home/people/22211214/scratch/ref/ANNOTATION_hg38_gencodeV46_mitranscriptomeBl.gtf /home/people/22211214/scratch/enrichment_analysis/ELBE.merged.uns/RIDLS___ridls.bed hela_merged_exons/ &> hela_merged_exons.log
+    # Required argument
+    parser.add_argument(
+        "--annotation",
+        required=True,
+        help="Path to annotation file, should be sorted and merged",
+    )
+
+    # Required argument
+    parser.add_argument(
+        "--outdir",
+        required=True,
+        help="Path of output folder",
+    )
+
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default='LENGTH',
+        help="maintain either LENGTH, COUNT or BOTH during simulations",
+    )
+
+    parser.add_argument(
+        "--length_tolerence",
+        type=float,
+        default=0.05,
+        help="Threshold of length for the simulated regions as fraction of the actual length of the regions",
+    )
+
+    parser.add_argument(
+        "--region_length_threshold",
+        type=int,
+        default=2000,
+        help="Only consider regions which are shorter than this threshold",
+    )
+
+    parser.add_argument(
+        "--simulation_count",
+        type=int,
+        default=10000,
+        help="Count of simulated regions to calcululate sampling distribution of the overlap",
+    )
+    
+    return parser.parse_args()
 
 if __name__=='__main__':
-    
-    region_file = sys.argv[1]
-    exon_file = sys.argv[2]
-    annotation_file = sys.argv[3]
-    out_dir = sys.argv[4]
-    
-    update_config(region_file, annotation_file, out_dir)
 
-    # process_files(region_file, exon_file, annotation_file, out_dir)
+    args = parse_args()
+    update_config(args)
+    
     intersect_region_annotation()
 
     print(CONFIG)
-    
-    # three approaches for simulation
-    # 1. maintain total hit length 
-    # 2. maintain total hit count only
-    # 3. maintain both: total hit count and length (most stringent)
-    
-    for LengthTolerance in CONFIG['LENGTH_TOLERENCE']:
-        print('\nCurrent legth tolerance: %f'%(LengthTolerance))
-        
-        simulationFile = generate_length_simulations(LengthTolerance)
-        print(simulationFile)
-        calculate_significance(simulationFile)
-        
-        # simulationFile = generate_count_simulations(LengthTolerance, same_length=False)
-        # print(simulationFile)
-        # calculate_significance(simulationFile)
 
-        # simulationFile = generate_count_simulations(LengthTolerance, same_length=True)
-        # print(simulationFile)
-        # calculate_significance(simulationFile)
+    print('\nCurrent legth tolerance: %f'%(args.length_tolerence))
 
-        print('#########################')
+    if args.mode=='LENGTH':
+        simulationFile = generate_length_simulations(args.length_tolerence)
+    else:
+        simulationFile = generate_length_simulations(args.length_tolerence, same_length=args.mode=='BOTH')
+    print(simulationFile)
+    
+    calculate_significance(simulationFile)
