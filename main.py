@@ -8,9 +8,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-enrichDir = '/home/people/22211214/scratch/projectbl'
-sys.path.append(enrichDir)
-import constants, helper_functions
+import helper_functions
 
 region_file_columns = ["chr", "start", "end", "region_id", "is_hit", "strand"]
 result_file_columns = ['annotation', 'observed', 'fc', 'pval',
